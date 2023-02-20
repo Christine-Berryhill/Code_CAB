@@ -1,0 +1,614 @@
+---
+title: "TMT Motif analysis"
+author: "Christine Berryhill"
+date: "2022-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+---
+title: "TNBC_Motif_analysis"
+author: "Christine Berryhill"
+date: "6/29/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(reshape2)
+library(ggplot2)
+#library(viridis)
+library(rstudioapi)
+library(stringr)
+library(dplyr)
+#library(UniprotR)
+
+
+setwd(dirname(getActiveDocumentContext()$path))
+options(stringsAsFactors = F)
+
+#Opening up all the files
+temp = list.files(pattern="*.csv")
+
+list2env(
+  lapply(setNames(temp, make.names(gsub("*.csv$", "", temp))), 
+         read.csv), envir = .GlobalEnv)
+
+
+#opening up peptide file to get list of all uniprot proteins identified
+
+setwd("/home/cberry/Documents/TNBC_TMT_Analysis/original files/")
+
+tmt<- na.omit(tmt_methylsites)
+
+tmt<-as.data.frame(
+ apply(tmt,2, function(x) gsub("\\s+", "", x)))
+
+#opening up pre peptide file
+tmt_peptides<- read.csv("TMTpro_deepfrac_PeptideSummary.csv")
+
+tmt_peptides$Protein.Accession<- gsub("\\;.*", "", tmt_peptides$Master.Protein.Accessions)
+
+pep<- as.data.frame(unique(tmt_peptides$Protein.Accession))
+
+colnames(pep)<- "U1"
+
+
+```
+
+#Get motifs
+
+#open up human 7-mer text
+```{r}
+setwd(dirname(getActiveDocumentContext()$path))
+
+human_7mer<- read.table("humanproteome_7mer.txt")
+
+colnames(human_7mer)<- c("U1", "motif", "Position", "idk")
+
+human_7mer$Format2<- paste0(human_7mer$U1, "-","K", human_7mer$Position)
+
+
+```
+#preparing unenriched
+
+
+```{r}
+
+tmt_motif<- inner_join(tmt, human_7mer, by = "Format2")
+
+tmt_anti<- anti_join(tmt, human_7mer, by = "Format2")
+
+tmt_motif<- tmt_motif[,-c(44:45)]
+
+```
+
+#Pulling out the motifs not seen in the 7-mer peptide
+
+```{r Function}
+# Motif Analysis
+
+#Functions to extract aa sequences for Uniprot IDs
+
+motif_analysis<- function (df){
+    
+    #Vector of Uniprot IDs
+    
+    IDs <- df[,"U1"]
+    
+    #Extract aa sequences for each Uniprot ID and store in a new df 
+    
+    Uniprot<- GetSequences(IDs)
+    
+    #Add aa sequences to a new column to df of interest
+    
+    aasequence<- as.character(Uniprot$Sequence)
+    
+    df <- cbind(df,aasequence)
+    print("Extracted sequence")
+
+     
+     
+  #Function to extract 7-mer sequence motif +/-3 aa from methylated lysine residue
+  #into a new dataframe
+ motif<- c()
+ 
+    for (i in 1:nrow(df)) {
+     
+      
+      #index df by aa sequence and then by +/- 3 positions from methylated residue
+      motif[i] <- print(str_sub(df[i,"aasequence"], 
+                                df[i,"Position"]-3, 
+                                df[i,"Position"]+3))
+      
+     }
+    #return df with column containing 7-mer motifs
+    df <- cbind(df, motif)
+        char <- nchar(df$motif)
+    df <- df[!(df$motif== "" | char < 7 | is.na(df$motif)), ] 
+    
+    print("Remove blanks from motif")
+    
+      y<- df
+  
+  y[,c(44:50)]<- str_split_fixed(y$motif, "", 7)
+  
+  y<- y %>% filter(y$V47 == "K")
+  
+  return(y)
+
+}
+
+#function to get normalized numbers to that individual heat map
+
+ratios<- function(x){
+  
+  a<- table(x$V44)
+  b<- table(x$V45)
+  c<- table(x$V46)
+  d<- table(x$V47)
+  e<- table(x$V48)
+  f<- table(x$V49)
+  g<- table(x$V50)
+  
+  position<- t(as.data.frame(bind_rows(a,b,c,d,e,f,g)))
+  position<- as.data.frame(position)
+  
+  row<- nrow(x)
+  
+  position[is.na(position)]<-0
+  
+  colnames(position)<- c("a","b","c","d","e","f", "g")
+  
+  row<- nrow(x)
+  
+  position$minus3<- (position$a/row)*100
+  position$minus2<- (position$b/row)*100
+  position$minus1<- (position$c/row)*100
+  position$plus1<- (position$e/row)*100
+  position$plus2<- (position$f/row)*100
+  position$plus3<- (position$g/row)*100
+  
+  position$minus3_norm<- position$minus3/max(position$minus3)
+  position$minus2_norm<- position$minus2/max(position$minus2)
+  position$minus1_norm<- position$minus1/max(position$minus1)
+  position$plus1_norm<- position$plus1/max(position$plus1)
+  position$plus2_norm<- position$plus2/max(position$plus2)
+  position$plus3_norm<- position$plus3/max(position$plus3)
+  
+  
+  position$AA<- rownames(position)
+  
+  ratio<- position[,c(8:13,20)]
+  
+  ratio<- melt(ratio)
+  
+  norm<- position[,c(14:20)]
+  norm<- melt(norm)
+  
+  ratio$norm<- norm$value
+
+  return(ratio)
+}
+```
+```{r Running motif analysis by extracting from UniprotR }
+tmt[,c('Amino.Acid', "Position")]<- str_split_fixed(tmt$Position, "K", 2)
+
+tmt<- tmt[,-c(42)]
+
+tmt$Position<- as.numeric(as.character(tmt$Position))
+
+tmt_ratios_v2<- motif_analysis(tmt)
+
+tmt_ratios_2<- ratios(tmt_ratios_v2)
+
+#write.csv(tmt_ratios_v2,"TMT_methyl_motifs.csv")
+```
+
+
+#heatmap just of the column normalized 
+```{r}
+tmt_motif_2<-as.data.frame(lapply(tmt_motif_2, function(x)if(is.character(x)|is.factor(x))gsub("minus3", "P-3", x)else(x)))
+tmt_motif_2<-as.data.frame(lapply(tmt_motif_2, function(x)if(is.character(x)|is.factor(x))gsub("minus2", "P-2", x)else(x)))
+tmt_motif_2<-as.data.frame(lapply(tmt_motif_2, function(x)if(is.character(x)|is.factor(x))gsub("minus1", "P-1", x)else(x)))
+tmt_motif_2<-as.data.frame(lapply(tmt_motif_2, function(x)if(is.character(x)|is.factor(x))gsub("plus1", "P+1", x)else(x)))
+tmt_motif_2<-as.data.frame(lapply(tmt_motif_2, function(x)if(is.character(x)|is.factor(x))gsub("plus2", "P+2", x)else(x)))
+tmt_motif_2<-as.data.frame(lapply(tmt_motif_2, function(x)if(is.character(x)|is.factor(x))gsub("plus3", "P+3", x)else(x)))
+
+
+q<-tmt_motif_2%>%
+  arrange(variable) %>%
+  mutate(name = factor(AA, levels = rev(c("K","R","H","D","E","N",
+                                          "Q","S","T","A","G","P",
+                                          "I","L","V","M","F","Y","W"
+                                          ,"C"))))%>%
+    mutate(position=factor(variable, levels = c("P-3","P-2","P-1",
+                         "P+1","P+2","P+3")))%>%
+  ggplot(aes(position, name)) +
+  geom_tile(aes(fill = norm), colour = "white") +
+  scale_fill_gradient2(low = "navy",
+                       mid = "white",
+                       high = "red",
+                       midpoint = 0.5)+
+  #facet_wrap(.~type, ncol =2)+
+  labs(x = "Position Relative to Methylated Lysine", y = "Amino Acid",
+       fill="")+
+    theme(text=element_text(family = "Arial"))+
+    theme_classic()+
+  theme(
+    strip.background = element_rect(fill = "gray80", color = "gray80", size = 1),
+    strip.text = element_text(colour = "black"))
+
+q
+
+ggsave(filename = "TMT_col_norm_motifs.eps", q, device = "eps", width = 4, height = 6)
+```
+
+
+# log2 fold change to all peptides
+
+## First find frequency of all peptides
+
+```{r}
+
+ ratios_un_pre<- function(a){
+  
+  y<- inner_join(a, human_7mer, "U1")
+  
+  y[,c(6:12)]<- str_split_fixed(y$motif, "", 7)
+  
+  x<- y %>% filter(y$V9 == "K")
+  
+  a<- table(x$V6)
+  b<- table(x$V7)
+  c<- table(x$V8)
+  d<- table(x$V9)
+  e<- table(x$V10)
+  f<- table(x$V11)
+  g<- table(x$V12)
+  
+  position<- t(as.data.frame(bind_rows(a,b,c,d,e,f,g)))
+  position<- as.data.frame(position)
+  
+  row<- nrow(x)
+  
+  position[is.na(position)]<-0
+
+  colnames(position)<- c("a","b","c","d","e","f", "g")
+  
+  row<- nrow(x)
+  
+  position$minus3<- (position$a/row)*100
+  position$minus2<- (position$b/row)*100
+  position$minus1<- (position$c/row)*100
+  position$plus1<- (position$e/row)*100
+  position$plus2<- (position$f/row)*100
+  position$plus3<- (position$g/row)*100
+  
+  position$minus3_norm<- position$minus3/max(position$minus3)
+  position$minus2_norm<- position$minus2/max(position$minus2)
+  position$minus1_norm<- position$minus1/max(position$minus1)
+  position$plus1_norm<- position$plus1/max(position$plus1)
+  position$plus2_norm<- position$plus2/max(position$plus2)
+  position$plus3_norm<- position$plus3/max(position$plus3)
+  
+  
+  position$AA<- rownames(position)
+  
+  ratio<- position[,c(8:13,20)]
+  
+  ratio<- melt(ratio)
+  
+  norm<- position[,c(14:20)]
+  norm<- melt(norm)
+  
+  ratio$norm<- norm$value
+  
+
+  
+  return(ratio)
+}
+
+
+pep_ratio<- ratios_un_pre(pep)
+pep_ratio<- filter(pep_ratio, AA != "U")
+```
+
+ ## now making heat maps of the pre peptides
+```{r}
+pep_ratio<-as.data.frame(lapply(pep_ratio, function(x)if(is.character(x)|is.factor(x))gsub("minus3", "P-3", x)else(x)))
+pep_ratio<-as.data.frame(lapply(pep_ratio, function(x)if(is.character(x)|is.factor(x))gsub("minus2", "P-2", x)else(x)))
+pep_ratio<-as.data.frame(lapply(pep_ratio, function(x)if(is.character(x)|is.factor(x))gsub("minus1", "P-1", x)else(x)))
+pep_ratio<-as.data.frame(lapply(pep_ratio, function(x)if(is.character(x)|is.factor(x))gsub("plus1", "P+1", x)else(x)))
+pep_ratio<-as.data.frame(lapply(pep_ratio, function(x)if(is.character(x)|is.factor(x))gsub("plus2", "P+2", x)else(x)))
+pep_ratio<-as.data.frame(lapply(pep_ratio, function(x)if(is.character(x)|is.factor(x))gsub("plus3", "P+3", x)else(x)))
+
+
+p<-pep_ratio%>%
+  arrange(variable) %>%
+  mutate(name = factor(AA, levels = rev(c("K","R","H","D","E","N",
+                                          "Q","S","T","A","G","P",
+                                          "I","L","V","M","F","Y","W"
+                                          ,"C"))))%>%
+    mutate(position=factor(variable, levels = c("P-3","P-2","P-1",
+                         "P+1","P+2","P+3")))%>%
+  ggplot(aes(position, name)) +
+  geom_tile(aes(fill = norm), colour = "white") +
+  scale_fill_gradient2(low = "navy",
+                       mid = "white",
+                       high = "red",
+                       midpoint = 0.5)+
+  #facet_wrap(.~type, ncol=2)+
+  labs(x = "Position Relative to Methylated Lysine", y = "Amino Acid",
+       fill="")+
+    theme(text=element_text(family = "Arial"))+
+    theme_classic()+
+  theme(
+    strip.background = element_rect(fill = "gray80", color = "gray80", size = 1),
+    strip.text = element_text(colour = "black"))
+
+
+
+ggsave(filename = "TMTPre_peptide_col_norm_motifs.eps", p, device = "eps", width = 4, height = 6)
+```
+
+## determine log 2 and then heatmap 
+ 
+```{r}
+#log function between enriched and pre samples
+ log_un <- function(x,y){
+   a<- x$norm/y$norm
+   a<- log2(a)
+   x$Freq<- a
+   return(x)
+ }
+
+tmt_log<- log_un(tmt_motif_2, pep_ratio)
+
+
+tmt_log<-as.data.frame(lapply(tmt_log, function(x)if(is.character(x)|is.factor(x))gsub("minus3", "P-3", x)else(x)))
+tmt_log<-as.data.frame(lapply(tmt_log, function(x)if(is.character(x)|is.factor(x))gsub("minus2", "P-2", x)else(x)))
+tmt_log<-as.data.frame(lapply(tmt_log, function(x)if(is.character(x)|is.factor(x))gsub("minus1", "P-1", x)else(x)))
+tmt_log<-as.data.frame(lapply(tmt_log, function(x)if(is.character(x)|is.factor(x))gsub("plus1", "P+1", x)else(x)))
+tmt_log<-as.data.frame(lapply(tmt_log, function(x)if(is.character(x)|is.factor(x))gsub("plus2", "P+2", x)else(x)))
+tmt_log<-as.data.frame(lapply(tmt_log, function(x)if(is.character(x)|is.factor(x))gsub("plus3", "P+3", x)else(x)))
+
+
+l<-tmt_log%>%
+  arrange(variable) %>%
+  mutate(name = factor(AA, levels = rev(c("K","R","H","D","E","N",
+                                          "Q","S","T","A","G","P",
+                                          "I","L","V","M","F","Y","W"
+                                          ,"C"))))%>%
+    mutate(position=factor(variable, levels = c("P-3","P-2","P-1",
+                         "P+1","P+2","P+3")))%>%
+  ggplot(aes(position, name)) +
+  geom_tile(aes(fill = Freq), colour = "white") +
+  scale_fill_gradient2(low = "navy",
+                       mid = "white",
+                       high = "red",
+                       midpoint = 0.5)+
+  #facet_wrap(.~type, ncol=2)+
+  labs(x = "Position Relative to Methylated Lysine", y = "Amino Acid",
+       fill="")+
+    theme(text=element_text(family = "Arial"))+
+    theme_classic()+
+  theme(
+    strip.background = element_rect(fill = "gray80", color = "gray80", size = 1),
+    strip.text = element_text(colour = "black"))
+
+ggsave(filename = "log_TMT_motifs.eps", l, device = "eps", width = 4, height = 6)
+
+```
+
+# Motif of significant sites seen in either DU4475 or MCF10A and not statistically sig
+
+```{r Making vectors of sites seen in tmt_new that are sig or not}
+
+tmt_ratios_v2<- TMT_methyl_motifs
+
+du_sig<- tmt_new%>%
+  filter(protein_type == "Up in DU4475")
+mcf_sig<- tmt_new %>%
+  filter(protein_type == "Up in MCF10A")
+ns_sig<- tmt_new%>%
+  filter(protein_type== "ns")
+
+du_sig_vec<- as.vector(du_sig$Format3)
+du_sig_vec<- du_sig_vec[!duplicated(du_sig_vec)]
+
+mcf_sig_vec<- as.vector(mcf_sig$Format3)
+mcf_sig_vec<- mcf_sig_vec[!duplicated(mcf_sig_vec)]
+
+ns_sig_vec<- as.vector(ns_sig$Format3)
+ns_sig_vec<- ns_sig_vec[!duplicated(ns_sig_vec)]
+
+du_tmt<- tmt_ratios_v2[tmt_ratios_v2$Format3 %in% du_sig_vec,]
+mcf_tmt<- tmt_ratios_v2[tmt_ratios_v2$Format3 %in% mcf_sig_vec,]
+ns_tmt<- tmt_ratios_v2[tmt_ratios_v2$Format3 %in% ns_sig_vec,]
+
+```
+```{r for mcf10a}
+ratios_mcf10a<- function(x){
+  
+  a<- table(x$V44)
+  b<- table(x$V45)
+  c<- table(x$V46)
+  d<- table(x$V47)
+  e<- table(x$V48)
+  f<- table(x$V49)
+  g<- table(x$V50)
+  
+  position<- t(as.data.frame(bind_rows(a,b,c,d,e,f,g)))
+  position<- as.data.frame(position)
+  
+  row<- nrow(x)
+  
+  position[is.na(position)]<-0
+  
+  position[nrow(position)+1,]<- 0
+  
+  rownames(position)[20]<- "W"
+  row<- nrow(x)
+  
+  position[is.na(position)]<-0
+  
+  colnames(position)<- c("a","b","c","d","e","f", "g")
+  
+  row<- nrow(x)
+  
+  position$minus3<- (position$a/row)*100
+  position$minus2<- (position$b/row)*100
+  position$minus1<- (position$c/row)*100
+  position$plus1<- (position$e/row)*100
+  position$plus2<- (position$f/row)*100
+  position$plus3<- (position$g/row)*100
+  
+  position$minus3_norm<- position$minus3/max(position$minus3)
+  position$minus2_norm<- position$minus2/max(position$minus2)
+  position$minus1_norm<- position$minus1/max(position$minus1)
+  position$plus1_norm<- position$plus1/max(position$plus1)
+  position$plus2_norm<- position$plus2/max(position$plus2)
+  position$plus3_norm<- position$plus3/max(position$plus3)
+  
+  
+  position$AA<- rownames(position)
+  
+  ratio<- position[,c(8:13,20)]
+  
+  ratio<- melt(ratio)
+  
+  norm<- position[,c(14:20)]
+  norm<- melt(norm)
+  
+  ratio$norm<- norm$value
+
+  return(ratio)
+}
+
+```
+
+```{r extracting motif frequencies}
+
+du_ratios<- ratios(du_tmt)
+du_ratios$type<- "Significant in DU4475"
+
+mcf_ratios<- ratios_mcf10a(mcf_tmt)
+mcf_ratios$type<- "Significant in MCF10A"
+
+ns_ratios<- ratios(ns_tmt)
+ns_ratios$type<- "n.s."
+
+tmt_overall_motif<- rbind(du_ratios, mcf_ratios, ns_ratios)
+
+```
+
+```{r ggplot of col normalized}
+tmt_overall_motif<-as.data.frame(lapply(tmt_overall_motif, function(x)if(is.character(x)|is.factor(x))gsub("minus3", "P-3", x)else(x)))
+tmt_overall_motif<-as.data.frame(lapply(tmt_overall_motif, function(x)if(is.character(x)|is.factor(x))gsub("minus2", "P-2", x)else(x)))
+tmt_overall_motif<-as.data.frame(lapply(tmt_overall_motif, function(x)if(is.character(x)|is.factor(x))gsub("minus1", "P-1", x)else(x)))
+tmt_overall_motif<-as.data.frame(lapply(tmt_overall_motif, function(x)if(is.character(x)|is.factor(x))gsub("plus1", "P+1", x)else(x)))
+tmt_overall_motif<-as.data.frame(lapply(tmt_overall_motif, function(x)if(is.character(x)|is.factor(x))gsub("plus2", "P+2", x)else(x)))
+tmt_overall_motif<-as.data.frame(lapply(tmt_overall_motif, function(x)if(is.character(x)|is.factor(x))gsub("plus3", "P+3", x)else(x)))
+
+
+t<-tmt_overall_motif%>%
+  arrange(variable) %>%
+  mutate(name = factor(AA, levels = rev(c("K","R","H","D","E","N",
+                                          "Q","S","T","A","G","P",
+                                          "I","L","V","M","F","Y","W"
+                                          ,"C"))))%>%
+    mutate(position=factor(variable, levels = c("P-3","P-2","P-1",
+                         "P+1","P+2","P+3")))%>%
+  ggplot(aes(position, name)) +
+  geom_tile(aes(fill = norm), colour = "white") +
+  scale_fill_gradient2(low = "navy",
+                       mid = "white",
+                       high = "red",
+                       midpoint = 0.5)+
+  facet_wrap(.~type, ncol =3)+
+  labs(x = "Position Relative to Methylated Lysine", y = "Amino Acid",
+       fill="")+
+    theme(text=element_text(family = "Arial"))+
+    #theme_classic()+
+  theme(
+    strip.background = element_rect(fill = "gray80", color = "gray80", size = 1),
+    strip.text = element_text(colour = "black"))
+
+t
+
+ggsave(filename = "TMT_col_norm_motifs_separated out by sig.eps", t, device = "eps", width = 12, height = 6)
+```
+```{r}
+
+#log function 
+ log_un <- function(x,y){
+   a<- x$norm/y$norm
+   a<- log2(a)
+   x$Freq<- a
+   return(x)
+ }
+
+du_ratios<- du_ratios[order(du_ratios$AA),]
+mcf_ratios<- mcf_ratios[order(mcf_ratios$AA),]
+ns_ratios<- ns_ratios[order(ns_ratios$AA),]
+pep_ratio<- pep_ratio[order(pep_ratio$AA),]
+
+du_ratios_log<- log_un(du_ratios, pep_ratio)
+du_ratios_log$type<- "Significant in DU4475"
+
+mcf_ratios_log<- log_un(mcf_ratios, pep_ratio)
+mcf_ratios_log$type<- "Significant in MCF10A"
+
+ns_ratios_log<- log_un(ns_ratios, pep_ratio)
+ns_ratios_log$type<- "n.s."
+
+overall_log<- rbind(du_ratios_log, mcf_ratios_log, ns_ratios_log)
+
+
+overall_log<-as.data.frame(lapply(overall_log, function(x)if(is.character(x)|is.factor(x))gsub("minus3", "P-3", x)else(x)))
+overall_log<-as.data.frame(lapply(overall_log, function(x)if(is.character(x)|is.factor(x))gsub("minus2", "P-2", x)else(x)))
+overall_log<-as.data.frame(lapply(overall_log, function(x)if(is.character(x)|is.factor(x))gsub("minus1", "P-1", x)else(x)))
+overall_log<-as.data.frame(lapply(overall_log, function(x)if(is.character(x)|is.factor(x))gsub("plus1", "P+1", x)else(x)))
+overall_log<-as.data.frame(lapply(overall_log, function(x)if(is.character(x)|is.factor(x))gsub("plus2", "P+2", x)else(x)))
+overall_log<-as.data.frame(lapply(overall_log, function(x)if(is.character(x)|is.factor(x))gsub("plus3", "P+3", x)else(x)))
+
+
+k<-overall_log%>%
+  arrange(variable) %>%
+  mutate(name = factor(AA, levels = rev(c("K","R","H","D","E","N",
+                                          "Q","S","T","A","G","P",
+                                          "I","L","V","M","F","Y","W"
+                                          ,"C"))))%>%
+    mutate(position=factor(variable, levels = c("P-3","P-2","P-1",
+                         "P+1","P+2","P+3")))%>%
+  ggplot(aes(position, name)) +
+  geom_tile(aes(fill = Freq), colour = "white") +
+  scale_fill_gradient2(low = "navy",
+                       mid = "white",
+                       high = "red",
+                       midpoint = 0.5)+
+  facet_wrap(.~type, ncol=3)+
+  labs(x = "Position Relative to Methylated Lysine", y = "Amino Acid",
+       fill="")+
+    theme(text=element_text(family = "Arial"))+
+    theme_classic()+
+  theme(
+    strip.background = element_rect(fill = "gray80", color = "gray80", size = 1),
+    strip.text = element_text(colour = "black"))
+k
+ggsave(filename = "log_TMT_motifs_by significant values.eps", k, device = "eps", width = 12, height = 6)
+
+```
+
+
+
+

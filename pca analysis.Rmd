@@ -1,0 +1,246 @@
+---
+title: "tmt pca analysis"
+author: "Christine Berryhill"
+date: "2022-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#open up files
+```{r}
+
+library(rstudioapi)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(ggforce)
+
+#Opening up all the files
+
+temp = list.files(pattern="*.csv")
+list2env(
+  lapply(setNames(temp, make.names(gsub("*.csv$", "", temp))), 
+         read.csv), envir = .GlobalEnv)
+
+tmt_methylsites<-as.data.frame(
+ apply(tmt_methylsites,2, function(x) gsub("\\s+", "", x)))
+
+tmt_methylsites<- na.omit(tmt_methylsites)
+
+
+```
+# PCA analysis for both all peptides and just methylated peptides
+
+#prepare data frame to do a pca analysis
+  columns are peptides/Format 3
+  rows are samples
+
+```{r}
+#Unenriched
+
+tmt_mat<- tmt_methylsites[,c(19:28,40)]
+
+tmt_mat<- tmt_mat[!duplicated(tmt_mat$Format3),]
+
+rownames(tmt_mat)<- tmt_mat[,11]
+
+tmt_mat<- tmt_mat[,-c(11)]
+
+colnames(tmt_mat)<-c("DU4475_R1", "DU4475_R2", "DU4475_R3", "DU4475_R4","DU4475_R5",
+                    "MCF10A_R1", "MCF10A_R2", "MCF10A_R3", "MCF10A_R4","MCF10A_R5")
+
+cols.num<- colnames(tmt_mat)
+
+tmt_mat[cols.num]<- sapply(tmt_mat[cols.num], as.numeric)
+
+tmt_mat<- na.omit(tmt_mat)
+
+tmt_mat_t<- t(tmt_mat)
+
+```
+```{r}
+
+tmt_pca<- prcomp(tmt_mat_t)
+
+```
+
+
+Plotting the pca
+```{r}
+
+plot(tmt_pca$x[,1], tmt_pca$x[,2])
+
+```
+making a scree plot
+```{r}
+tmt.pca.var<- tmt_pca$sdev^2
+
+tmt.pca.var.per<- round(tmt.pca.var/sum(tmt.pca.var)*100,1)
+
+```
+```{r}
+barplot(tmt.pca.var.per, main="Scree Plot", xlab="Principal Component", ylab="Percent Variation")
+
+```
+
+Using ggplot to make a nice pca plot
+```{r}
+tmt_pca_data<- data.frame(sample= rownames(tmt_pca$x),
+                         x=tmt_pca$x[,1],
+                         y = tmt_pca$x[,2])
+
+tmt_pca_data$cell<-c(rep("DU4475",5) , rep("MCF10A",5))
+```
+```{r}
+
+a<-ggplot(data=tmt_pca_data,aes(label=sample,x=x,y=y, color = cell)) + 
+ 
+  ggtitle("PCA Plot of Kme sites in Dataset Without Enrichment") +
+
+  geom_point(aes( size = 4)) +
+  
+  scale_color_manual(values = c("DU4475"= "#88a4bf", "MCF10A"="#c59b19"))+
+
+  xlab(paste("PC1: ",tmt.pca.var.per[1],"%",sep="")) +
+
+  ylab(paste("PC2: ",tmt.pca.var.per[2],"%",sep=""))+
+   #geom_mark_ellipse(aes(color = as.factor(cell)), expand = unit(0.5, "mm"), show.legend = F )+
+  #geom_encircle(aes(group = type), color = "red", s_shape = 0.01, expand = 0.04)+
+  theme_classic()+
+  theme(legend.text = element_text(size = 10))+
+  guides(color=guide_legend(override.aes = list(size = 5)),
+         shape = guide_legend(override.aes = list(size=5)))
+ 
+a
+
+ggsave("TMT.methyl.pcaplot.eps", a, device= "eps", width = 6, height = 3)
+```
+
+looking at what contributes the most to PC1
+```{r}
+
+#getting the loading scores
+
+loadingScores<- tmt_pca$rotation[,1]
+
+#getting the magnitudes of loading scores
+
+geneScores<- abs(loadingScores)
+
+#soring from high to low
+
+geneScoreRanked<- sort(geneScores, decreasing = T)
+
+#getting top 5 format 3
+
+top5genes<- names(geneScoreRanked[1:10])
+
+top_tmt_pca<-tmt_pca$rotation[top5genes,1]
+top_tmt_pca
+
+```
+
+# PCA Analysis of the proteomes using the normalized protein amounts
+```{r}
+#PCA Analysis of proteins
+
+tmt_mat_protein<- tmt_prot[,c(17:26,4)]
+
+tmt_mat_protein<- tmt_mat_protein[!duplicated(tmt_mat_protein$Accession),]
+
+rownames(tmt_mat_protein)<- tmt_mat_protein[,11]
+
+tmt_mat_protein<- tmt_mat_protein[,-c(11)]
+
+colnames(tmt_mat_protein)<-c("DU4475_R1", "DU4475_R2", "DU4475_R3", "DU4475_R4","DU4475_R5",
+                    "MCF10A_R1", "MCF10A_R2", "MCF10A_R3", "MCF10A_R4","MCF10A_R5")
+
+
+tmt_mat_protein<- na.omit(tmt_mat_protein)
+
+tmt_mat_protein_t<- t(tmt_mat_protein)
+
+```
+```{r}
+
+tmt_pca_protein<- prcomp(tmt_mat_protein_t)
+
+```
+
+Plotting the pca
+```{r}
+
+plot(tmt_pca_protein$x[,1], tmt_pca_protein$x[,2])
+
+```
+making a scree plot
+```{r}
+un.protein.pca.var<- tmt_pca_protein$sdev^2
+
+un.protein.pca.var.per<- round(un.protein.pca.var/sum(un.protein.pca.var)*100,1)
+```
+```{r}
+
+barplot(un.protein.pca.var.per, main="Scree Plot", xlab="Principal Component", ylab="Percent Variation")
+
+```
+
+Using ggplot to make a nice pca plot
+```{r}
+tmt_pca_protein_data<- data.frame(sample= rownames(tmt_pca_protein$x),
+                         x=tmt_pca_protein$x[,1],
+                         y = tmt_pca_protein$x[,2])
+
+tmt_pca_protein_data$cell<-c(rep("DU4475",5) , rep("MCF10A",5))
+
+```
+```{r}
+
+e<-ggplot(data=tmt_pca_protein_data,aes(label=sample,x=x,y=y, color = cell)) + 
+ 
+  ggtitle("PCA Plot of Proteins in Dataset Without Enrichment") +
+
+  geom_point(aes(color = cell, size = 4)) +
+  
+  scale_color_manual(values = c("DU4475"= "#88a4bf", "MCF10A"="#c59b19"))+
+
+  xlab(paste("PC1: ",un.protein.pca.var.per[1],"%",sep="")) +
+
+  ylab(paste("PC2: ",un.protein.pca.var.per[2],"%",sep=""))+
+  
+  theme_classic()+
+  theme(legend.text = element_text(size = 10))+
+  guides(color=guide_legend(override.aes = list(size = 5)),
+         shape = guide_legend(override.aes = list(size=5)))
+  #geom_encircle(aes(group = cell), color = "black", s_shape = 0.01, expand = 0.04)
+e
+ggsave("TMT.protein.pcaplot.eps", e, device= "eps", width = 6, height = 3)
+```
+
+
+looking at what contributes the most to PC1
+```{r}
+
+#getting the loading scores
+
+loadingScores<- tmt_pca_protein$rotation[,1]
+
+#getting the magnitudes of loading scores
+
+geneScores<- abs(loadingScores)
+
+#soring from high to low
+
+geneScoreRanked<- sort(geneScores, decreasing = T)
+
+#getting top 5 format 3
+
+top5genes<- names(geneScoreRanked[1:10])
+
+top_tmt_pca_protein<-tmt_pca_protein$rotation[top5genes,1]
+top_tmt_pca_protein
+
+```

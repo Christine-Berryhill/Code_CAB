@@ -1,0 +1,534 @@
+---
+title: "tmt proteome"
+author: "Christine Berryhill"
+date: "2022-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+
+library(rstudioapi)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(UpSetR)
+
+setwd(dirname(getActiveDocumentContext()$path))
+
+#Opening up all the files
+
+temp = list.files(pattern="*.csv")
+list2env(
+  lapply(setNames(temp, make.names(gsub("*.csv$", "", temp))), 
+         read.csv), envir = .GlobalEnv)
+
+
+
+tmt_methylsites<-as.data.frame(
+ apply(tmt_methylsites,2, function(x) gsub("\\s+", "", x)))
+
+tmt<-as.data.frame(
+ apply(tmt_new,2, function(x) gsub("\\s+", "", x)))
+
+
+```
+
+```{r Opening up the proteome files}
+tmt_prot<- read.csv("/home/cberry/Documents/TNBC_TMT_Analysis/original files/TMTpro_deepfrac_ProteinSummary.csv")
+
+du<- read.csv("Proteome/Proteins Upregulated in DU4475.csv")
+mcf<- read.csv("Proteome/Proteins Upregulated in MCF10a.csv")
+
+```
+
+#Proteome level 
+
+## Looking at proteome by cell type
+```{r}
+tmt_du4475<- tmt_prot[!is.na(tmt_prot$Abundance..F1..126..Sample..D) &
+                      !is.na(tmt_prot$Abundance..F1..128N..Sample..D)&
+                       !is.na(tmt_prot$Abundance..F1..130C..Sample..D) &
+                       !is.na(tmt_prot$Abundance..F1..130N..Sample..D) &
+                       !is.na(tmt_prot$Abundance..F1..131N..Sample..D),]
+
+tmt_mcf10a<- tmt_prot[!is.na(tmt_prot$Abundance..F1..128C..Sample..M)&
+                      !is.na(tmt_prot$Abundance..F1..129N..Sample..M) &
+                        !is.na(tmt_prot$Abundance..F1..133C..Sample..M) &
+                        !is.na(tmt_prot$Abundance..F1..133N..Sample..M) &
+                        !is.na(tmt_prot$Abundance..F1..134N..Sample..M)
+                        ,]
+
+
+#11426 proteins
+
+```
+
+```{r Upset Plots by enrichment strategy}
+
+listInput3<- list(DU4475 = tmt_du4475$Accession,
+                  MCF10A=tmt_mcf10a$Accession)
+
+
+tiff("Proteome by cell line tmt.tiff", width = 10, height = 6, units = "in", res= 300)
+upset(fromList(listInput3),nsets = 2, nintersects = NA, order.by = "freq",sets.bar.color = "#56B4E9", mainbar.y.label = 
+        "Cell Intersections", sets.x.label = "Protein")
+
+
+dev.off()
+
+```
+#Reproducibility of the proteome
+
+## Linear model
+```{r}
+tmt_work<- tmt_prot[,c(4, 17:26)]
+
+colnames(tmt_work)<- c("Accession", "DU4475_R1","DU4475_R2","DU4475_R3","DU4475_R4","DU4475_R5",
+                       "MCF10A_R1","MCF10A_R2","MCF10A_R3","MCF10A_R4","MCF10A_R5")
+
+
+
+```
+
+```{r ggplot of all the linear models of the proteome for DU4475}
+
+library(ggpubr)
+
+#R1 v r2
+c<-ggplot(tmt_work, aes(DU4475_R1, DU4475_R2))+
+  geom_jitter(color = "#428bca")+
+    labs(
+       y="Replicate 2", 
+       x="Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+
+#R1 v r3
+d<-ggplot(tmt_work, aes(DU4475_R1, DU4475_R3))+
+  geom_jitter(color = "#428bca")+
+  labs(
+       y="Log2 FC Replicate 3", 
+       x="Log2 FC Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R1 v r4
+e<-ggplot(tmt_work, aes(DU4475_R1, DU4475_R4))+
+  geom_jitter(color = "#428bca")+
+    labs(
+       y="Log2 FC Replicate 4", 
+       x="Log2 FC Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R1 v r5
+f<-ggplot(tmt_work, aes(DU4475_R1, DU4475_R5))+
+  geom_jitter(color = "#428bca")+
+    labs( 
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R2 v r3
+g<-ggplot(tmt_work, aes(DU4475_R2, DU4475_R3))+
+  geom_jitter(color = "#5cb85c")+
+    labs( 
+       y="Log2 FC Replicate 3", 
+       x="Log2 FC Replicate 2")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R2 v r4
+h<-ggplot(tmt_work, aes(DU4475_R2, DU4475_R4))+
+  geom_jitter(color = "#5cb85c")+
+    labs( 
+       y="Log2 FC Replicate 4", 
+       x="Log2 FC Replicate 2")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R2 v r5
+i<-ggplot(tmt_work, aes(DU4475_R2, DU4475_R5))+
+  geom_jitter(color = "#5cb85c")+
+    labs(
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 2")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R3 v r4
+j<-ggplot(tmt_work, aes(DU4475_R3, DU4475_R4))+
+  geom_jitter(color = "#d9534f")+
+    labs( 
+       y="Log2 FC Replicate 4", 
+       x="Log2 FC Replicate 3")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R3 v r5
+k<-ggplot(tmt_work, aes(DU4475_R3, DU4475_R5))+
+  geom_jitter(color = "#d9534f")+
+    labs( 
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 3")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R4 v r5
+l<-ggplot(tmt_work, aes(DU4475_R4, DU4475_R5))+
+  geom_jitter(color = "#f1c232")+
+    labs(
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 4")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+figure<- ggarrange(c,d,e,f,g,h,i,j,k,l,
+                   ncol = 4, nrow =4, common.legend = T)
+
+figure
+```
+
+```{r ggplot of all the linear models of the proteome for MCF10A}
+
+library(ggpubr)
+
+#R1 v r2
+c<-ggplot(tmt_work, aes(MCF10A_R1, MCF10A_R2))+
+  geom_jitter(color = "#428bca")+
+    labs(
+       y="Replicate 2", 
+       x="Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+
+#R1 v r3
+d<-ggplot(tmt_work, aes(MCF10A_R1, MCF10A_R3))+
+  geom_jitter(color = "#428bca")+
+  labs(
+       y="Log2 FC Replicate 3", 
+       x="Log2 FC Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R1 v r4
+e<-ggplot(tmt_work, aes(MCF10A_R1, MCF10A_R4))+
+  geom_jitter(color = "#428bca")+
+    labs(
+       y="Log2 FC Replicate 4", 
+       x="Log2 FC Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R1 v r5
+f<-ggplot(tmt_work, aes(MCF10A_R1, MCF10A_R5))+
+  geom_jitter(color = "#428bca")+
+    labs( 
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 1")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R2 v r3
+g<-ggplot(tmt_work, aes(MCF10A_R2, MCF10A_R3))+
+  geom_jitter(color = "#5cb85c")+
+    labs( 
+       y="Log2 FC Replicate 3", 
+       x="Log2 FC Replicate 2")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R2 v r4
+h<-ggplot(tmt_work, aes(MCF10A_R2, MCF10A_R4))+
+  geom_jitter(color = "#5cb85c")+
+    labs( 
+       y="Log2 FC Replicate 4", 
+       x="Log2 FC Replicate 2")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R2 v r5
+i<-ggplot(tmt_work, aes(MCF10A_R2, MCF10A_R5))+
+  geom_jitter(color = "#5cb85c")+
+    labs(
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 2")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R3 v r4
+j<-ggplot(tmt_work, aes(MCF10A_R3, MCF10A_R4))+
+  geom_jitter(color = "#d9534f")+
+    labs( 
+       y="Log2 FC Replicate 4", 
+       x="Log2 FC Replicate 3")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R3 v r5
+k<-ggplot(tmt_work, aes(MCF10A_R3, MCF10A_R5))+
+  geom_jitter(color = "#d9534f")+
+    labs( 
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 3")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+#R4 v r5
+l<-ggplot(tmt_work, aes(MCF10A_R4, MCF10A_R5))+
+  geom_jitter(color = "#f1c232")+
+    labs(
+       y="Log2 FC Replicate 5", 
+       x="Log2 FC Replicate 4")+
+  stat_cor(method = "pearson")+
+  theme_classic()
+
+figure<- ggarrange(c,d,e,f,g,h,i,j,k,l,
+                   ncol = 4, nrow =4, common.legend = T)
+
+figure
+
+```
+
+# Volcano plot of the proteome 
+
+```{r formatting}
+#keeping Abundances, Format2, Format 3, and U1
+
+tmt<- tmt_prot[,c(4,17:26)]
+
+colnames(tmt)<- c("Accession", 
+                  "DU4475_R1","DU4475_R2","DU4475_R3","DU4475_R4","DU4475_R5",
+                  "MCF10A_R1","MCF10A_R2","MCF10A_R3","MCF10A_R4","MCF10A_R5")
+
+
+cols.num<- c("DU4475_R1","DU4475_R2","DU4475_R3","DU4475_R4","DU4475_R5",
+              "MCF10A_R1","MCF10A_R2","MCF10A_R3","MCF10A_R4","MCF10A_R5")
+
+tmt[cols.num]<- sapply(tmt[cols.num], as.numeric)
+
+```
+
+```{r Calculating log10FC and BH adjusted P value using t test}
+
+#determining the mean and sd of the normalized abundances
+tmt$du_mean<- rowMeans(tmt[,2:6])
+tmt$du_sd<-apply(tmt[,2:6], 1, sd)
+
+tmt$mcf10a_mean<- rowMeans(tmt[,7:11])
+tmt$mcf10a_sd<- apply(tmt[,7:11], 1, sd)
+
+# Calculating log10FC
+
+tmt$FC<- tmt$du_mean/tmt$mcf10a_mean
+#hist(tmt$FC) 
+#histogram is not normal. So to do a t-test, need normal distribution. Therefore log transforming
+
+tmt$log10FC<- log10(tmt$FC)
+#hist(tmt$log10FC)
+#now have a normal distribution
+
+tmt<- na.omit(tmt)
+
+
+#51 sites dropped since they're the same in both du and mcf10A
+
+library(tidyverse)
+
+tmt<- tmt%>%
+  rowwise() %>%
+  mutate(pval = t.test(c(DU4475_R1, DU4475_R2, DU4475_R3, DU4475_R4, DU4475_R5),
+                       c(MCF10A_R1, MCF10A_R2, MCF10A_R3, MCF10A_R4, MCF10A_R5))$p.value)%>%
+  ungroup()
+
+tmt$p.adjust<- p.adjust(tmt$pval, method = "BH")
+
+
+#desginating when something is up or down
+
+tmt<- tmt%>%
+  mutate(protein_type= case_when(FC >= 2 & p.adjust <=0.05 ~ "Up in DU4475",
+                                 FC <= 0.5 & p.adjust <= 0.05 ~"Up in MCF10A",
+                                 TRUE ~ "ns"))
+
+#obtain protein counts
+
+tmt%>%
+  count(protein_type)
+
+
+```
+
+# Volcano Plots
+```{r}
+#510 sites
+
+#Note: Using my calculated fold change (which when really different fold change differs from PD's) and PD's pvalue
+
+vol_plot<-ggplot(tmt, aes(x = log2(FC),
+                        y = -log10(p.adjust)))+
+  geom_point()
+
+vol_plot+
+    geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(-2, 2),
+             linetype = "dashed") +
+    scale_x_continuous(breaks = c(seq(-15, 15, 2)), # Modify x-axis tick intervals    
+                     limits = c(-15, 15)) 
+
+```
+
+
+## plotting new ggplot with different colors
+
+```{r}
+cols <- c("Up in DU4475" = "#ff1a1a", "Up in MCF10A" = "#26b3ff", "ns" = "grey") 
+sizes <- c("Up in DU4475" = 2, "Up in MCF10A" = 2, "ns" = 1) 
+
+a<-tmt %>%
+  ggplot(aes(x = log2(FC),
+             y = -log10(p.adjust),
+             fill = protein_type,    
+             size = protein_type)) + 
+  geom_point(shape = 21, # Specify shape and colour as fixed local parameters    
+             colour = "black") + 
+  geom_hline(yintercept = -log10(0.05),
+             linetype = "dashed") + 
+  geom_vline(xintercept = c(log2(0.5), log2(2)),
+             linetype = "dashed") +
+  scale_fill_manual(values = cols) + # Modify point colour
+  scale_size_manual(values = sizes) + # Modify point size
+  scale_x_continuous(breaks = c(seq(-10, 10, 2)),       
+                     limits = c(-10, 10)) +
+  theme_classic()+
+  labs(title= "Upregulated Proteins in DU4475 vs MCF10A",
+       x = "log2(FC (DU4475/MCF10A))",
+       y = "-log10(BH adjust pvalue)")
+
+a
+ggsave("tmt Proteome_volcanoplot.eps", a, device = "eps", width = 10, height = 5)
+
+
+```
+
+#writing csvs with upregulated proteins
+```{r}
+
+du<- tmt%>%
+  filter(protein_type == "Up in DU4475")
+
+mcf10a<- tmt%>%
+  filter(protein_type == "Up in MCF10A")
+
+write.csv(du, "Proteins Upregulated in DU4475.csv")
+write.csv(mcf10a, "Proteins Upregulated in MCF10a.csv")
+
+```
+
+
+#GO Analysis of significantly altered protein abundances
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+```
+
+# For Cluster Profiler
+```{r}
+
+
+go_enrich<- function(x){
+
+gene<- x$Accession
+ 
+genes<-select(org.Hs.eg.db, gene, "ENTREZID", "UNIPROT")
+
+print("done mapping")
+
+genes<- na.omit(genes)
+
+genes_ID<- genes$ENTREZID
+
+print("Ready to enrich")
+
+return(genes_ID)
+}
+
+#DU4475 Upregulated
+du_go<- go_enrich(du)
+
+du_go_enriched<- enrichGO(du_go,OrgDb = "org.Hs.eg.db", ont="all")
+
+du_go_enriched_dot<-dotplot(du_go_enriched, split="ONTOLOGY")+
+  facet_grid(ONTOLOGY~., scale="free")+
+  scale_fill_continuous(limits=c(0,1))
+
+du_go_enriched_dot
+
+ggsave(du_go_enriched_dot, file= "Du4475 TMT_GO_terms.eps", device = "eps", width = 10, height = 12)
+
+du_go_enriched_df<- as.data.frame(du_go_enriched)
+
+#MCF10A Upregulated
+mcf10a_go<- go_enrich(mcf10a)
+
+mcf10a_go_enriched<- enrichGO(mcf10a_go,OrgDb = "org.Hs.eg.db", ont="all")
+
+mcf10a_go_enriched_dot<-dotplot(mcf10a_go_enriched, split="ONTOLOGY")+
+  facet_grid(ONTOLOGY~., scale="free")+
+  scale_fill_continuous(limits=c(0,1))
+
+mcf10a_go_enriched_dot
+
+ggsave(mcf10a_go_enriched_dot, file= "MCF10A TMT_GO_terms.eps", device = "eps", width = 10, height = 12)
+
+mcf10a_go_enriched_df<- as.data.frame(mcf10a_go_enriched)
+```
+
+```{r}
+write.csv(du_go_enriched_df, "DU4475 GO terms.csv")
+write.csv(mcf10a_go_enriched_df, "MCF10A GO Terms.csv")
+```
+
+# Crossing upregulated terms with methylated sites
+```{r fitlering tmt new for up in du or mcf}
+
+du_kme<- tmt_new%>%
+  filter(protein_type == "Up in DU4475")
+
+mcf_kme<- tmt_new%>%
+  filter(protein_type=="Up in MCF10A")
+
+```
+
+```{r}
+
+du_vec<- as.vector(du_kme$Accession)
+
+mcf_vec<- as.vector(mcf_kme$Accession)
+
+du_sig_kme<- du[du$Accession %in% du_vec,]
+
+mcf_sig_kme<- mcf[mcf$Accession %in% mcf_vec,]
+
+#1 of the du kme sites is also up in the proteome
+  #	Q5VV89 Microsomal glutathione S-transferase 3
+
+#5 of the mcf10a kme sites is also up in the proteome
+
+#A0A0A0MTS7 Titin
+#Q96NL6 Sodium channel and clathrin linker 1
+#A0A0G2JIW1 Heat shock 70 kDa protein 1B
+#P02533 Keratin, type I cytoskeletal 14
+#Q09666 Neuroblast differentiation-associated protein AHNAK
+```
+

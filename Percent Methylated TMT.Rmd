@@ -1,0 +1,99 @@
+---
+title: "Untitled"
+author: "Christine Berryhill"
+date: "2022-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+library(rstudioapi)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(ggsci)
+
+setwd(dirname(getActiveDocumentContext()$path))
+
+#Opening up all the files
+
+temp = list.files(pattern="*.csv")
+list2env(
+  lapply(setNames(temp, make.names(gsub("*.csv$", "", temp))), 
+         read.csv), envir = .GlobalEnv)
+
+all_peptides<- read.csv("/home/cberry/Documents/TNBC_TMT_Analysis/original files/TMTpro_deepfrac_PeptideSummary.csv")
+```
+
+#formatting
+```{r}
+tmt_methylsites$type<- "TMT"
+
+tmt_methylsites_2<- as.data.frame(
+  apply(tmt_methylsites,2, function(x) gsub("\\s+", "", x)))
+
+
+```
+
+# % PSMs methylated in each dataset (tmt_methylsites_2ed vs enriched) by methyl state
+## tmt_methylsites_2ed
+```{r}
+#Use only unique peptides
+tmt_methylsites_2$unique_id<- paste0(tmt_methylsites_2$Annotated.Sequence, "-", tmt_methylsites_2$Modifications)
+
+un_unique_peptide<- tmt_methylsites_2[!duplicated(tmt_methylsites_2$unique_id),]
+
+tmt_methylsites_2ed_numbers<- as.data.frame(cbind(un_unique_peptide$X..PSMs, un_unique_peptide$Methyl_state))
+
+
+#Sum the total of all PSMs detected in the all_peptides df
+all_peptides$X..PSMs<- as.numeric(as.character(all_peptides$X..PSMs))
+
+x<- sum(all_peptides$X..PSMs)
+
+#x is the total number of PSMs in the set
+
+# tmt_methylsites_2ed: 547842
+
+#Now to determine % PSMs
+
+tmt_methylsites_2ed_numbers$V1<- as.numeric(as.character(tmt_methylsites_2ed_numbers$V1))
+
+z<- tmt_methylsites_2ed_numbers %>%
+  group_by(V2) %>%
+  summarise(Freq = sum(V1))
+
+
+z$Percentage<- (z$Freq/x)*100
+
+
+z$type<- "tmt_methylsites_2ed"
+```
+
+
+## Making ggplot of the data
+
+```{r}
+
+d<- ggplot(z, aes(x=V2, y=Percentage, fill = V2)) + 
+  geom_bar(stat="identity", width=.5, position = "dodge") + 
+  labs(title="% of PSMs methylated", 
+       subtitle="TMT data", 
+       caption="source: SILAC") + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))+
+  theme_classic()+
+  xlab (expression("Methyl State"))
+
+d
+
+ggsave("Percent PSMs methylated_TMT.eps", d, device = "eps")
+
+```
+
+
