@@ -108,11 +108,13 @@ You'll learn more about R Markdown in later classes, and all of your coding and 
 ```
 
 ```{r}
-#setwd()
-#read.csv()
+#a<-read.table("KMT_mRNA_exprexpression.txt", header = T)
+
 #Explore the dataframe! 
-#df$
-#df[1,2]
+#mean(a$ASH1L)
+#sd(a$ASH1L)
+
+
 ```
 
 
